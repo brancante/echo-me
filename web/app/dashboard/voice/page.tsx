@@ -1,148 +1,198 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 
 type JobStatus = "idle" | "loading" | "queued" | "processing" | "completed" | "failed";
 
 export default function VoicePage() {
   const [url, setUrl] = useState("");
   const [name, setName] = useState("");
-  const [status, setStatus] = useState<JobStatus>("idle");
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+
+  const [extractJobId, setExtractJobId] = useState<string | null>(null);
+  const [extractStatus, setExtractStatus] = useState<JobStatus>("idle");
+  const [extractError, setExtractError] = useState<string | null>(null);
+
+  const [cloneJobId, setCloneJobId] = useState<string | null>(null);
+  const [cloneStatus, setCloneStatus] = useState<JobStatus>("idle");
+  const [cloneError, setCloneError] = useState<string | null>(null);
   const [voiceId, setVoiceId] = useState<string | null>(null);
 
-  // Poll job status
+  const [ttsText, setTtsText] = useState("Olá, eu sou sua nova voz clonada.");
+  const [ttsAudioUrl, setTtsAudioUrl] = useState<string | null>(null);
+  const [ttsLoading, setTtsLoading] = useState(false);
+
   useEffect(() => {
-    if (!jobId || status === "completed" || status === "failed") return;
-
+    if (!extractJobId || extractStatus === "completed" || extractStatus === "failed") return;
     const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/voice/jobs/${jobId}`);
-        if (!res.ok) throw new Error("Failed to fetch job status");
-        
-        const data = await res.json();
-        const job = data.job;
-        
-        setStatus(job.status as JobStatus);
-        
-        if (job.status === "completed") {
-          const output = typeof job.output === "string" ? JSON.parse(job.output) : job.output;
-          setVoiceId(output?.voice_id || null);
-        } else if (job.status === "failed") {
-          setError(job.error || "Voice cloning failed");
-        }
-      } catch (err) {
-        console.error("Error polling job:", err);
-      }
-    }, 3000); // Poll every 3 seconds
-
+      const res = await fetch(`/api/voice/jobs/${extractJobId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const status = data?.job?.status as JobStatus;
+      setExtractStatus(status);
+      if (status === "failed") setExtractError(data?.job?.error || "Falha na extração");
+    }, 3000);
     return () => clearInterval(interval);
-  }, [jobId, status]);
+  }, [extractJobId, extractStatus]);
+
+  useEffect(() => {
+    if (!cloneJobId || cloneStatus === "completed" || cloneStatus === "failed") return;
+    const interval = setInterval(async () => {
+      const res = await fetch(`/api/voice/jobs/${cloneJobId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const job = data?.job;
+      const status = job?.status as JobStatus;
+      setCloneStatus(status);
+      if (status === "completed") {
+        const output = typeof job.output === "string" ? JSON.parse(job.output) : job.output;
+        setVoiceId(output?.voice_id || null);
+      }
+      if (status === "failed") setCloneError(job?.error || "Falha no clone");
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [cloneJobId, cloneStatus]);
+
+  async function handleExtract() {
+    setExtractStatus("loading");
+    setExtractError(null);
+    setExtractJobId(null);
+    setCloneJobId(null);
+    setCloneStatus("idle");
+    setVoiceId(null);
+    setTtsAudioUrl(null);
+
+    const res = await fetch("/api/voice/extract", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ youtube_url: url, persona_name: name }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setExtractStatus("failed");
+      setExtractError(data.error || "Falha ao iniciar extração");
+      return;
+    }
+
+    setExtractJobId(data.job_id);
+    setExtractStatus("queued");
+  }
 
   async function handleClone() {
-    setStatus("loading");
-    setError(null);
-    setVoiceId(null);
-    
+    if (!extractJobId) return;
+    setCloneStatus("loading");
+    setCloneError(null);
+
+    const res = await fetch("/api/voice/clone", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ extract_job_id: extractJobId, persona_name: name }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setCloneStatus("failed");
+      setCloneError(data.error || "Falha ao iniciar clone");
+      return;
+    }
+
+    setCloneJobId(data.job_id);
+    setCloneStatus("queued");
+  }
+
+  async function handleSpeak() {
+    setTtsLoading(true);
+    setTtsAudioUrl(null);
     try {
-      const res = await fetch("/api/voice/clone", {
+      const res = await fetch("/api/voice/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ youtube_url: url, persona_name: name }),
+        body: JSON.stringify({ text: ttsText, voice_id: voiceId }),
       });
-      
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Clone failed");
+        const err = await res.json();
+        throw new Error(err.error || "Falha no TTS");
       }
-      
-      const data = await res.json();
-      setJobId(data.job_id);
-      setStatus("queued");
-    } catch (err: any) {
-      setError(err.message || "Failed to start voice clone");
-      setStatus("idle");
+      const blob = await res.blob();
+      setTtsAudioUrl(URL.createObjectURL(blob));
+    } catch (e: any) {
+      alert(e.message || "Erro ao falar");
+    } finally {
+      setTtsLoading(false);
     }
   }
 
   return (
-    <div className="max-w-xl space-y-6">
-      <h1 className="text-2xl font-bold">🎙️ Voice Cloning</h1>
-      <p className="text-gray-400">
-        Paste a YouTube video URL with clear speech. We'll extract the audio, clean it up, and clone the voice.
-      </p>
+    <div className="max-w-2xl space-y-6">
+      <h1 className="text-2xl font-bold">🎙️ VOZ</h1>
 
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm text-gray-500 mb-1">Persona Name</label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Sales Expert João"
-            className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-sm focus:border-brand-500 focus:outline-none"
-            disabled={status !== "idle"}
-          />
-        </div>
-        <div>
-          <label className="block text-sm text-gray-500 mb-1">YouTube URL</label>
-          <input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://www.youtube.com/watch?v=..."
-            className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-sm focus:border-brand-500 focus:outline-none"
-            disabled={status !== "idle"}
-          />
-        </div>
+      <div className="rounded-xl border border-gray-800 p-4 space-y-3">
+        <h2 className="font-semibold">VOZ-1 · Dados da voz</h2>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Nome da voz"
+          className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-sm"
+        />
+        <input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="URL do YouTube"
+          className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-sm"
+        />
         <button
-          onClick={handleClone}
-          disabled={!url || !name || status !== "idle"}
-          className="rounded-lg bg-brand-600 px-6 py-2 text-sm font-semibold hover:bg-brand-700 transition disabled:opacity-50"
+          onClick={handleExtract}
+          disabled={!name || !url || extractStatus === "loading" || extractStatus === "queued" || extractStatus === "processing"}
+          className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold disabled:opacity-50"
         >
-          {status === "loading" ? "Starting..." : "Start Voice Clone"}
+          {extractStatus === "loading" ? "Iniciando..." : "Extrair MP3"}
         </button>
+
+        {(extractStatus === "queued" || extractStatus === "processing") && (
+          <p className="text-sm text-blue-400">Extraindo áudio... ({extractStatus})</p>
+        )}
+        {extractStatus === "failed" && <p className="text-sm text-red-400">{extractError}</p>}
       </div>
 
-      {/* Status display */}
-      {status === "queued" && (
-        <div className="rounded-lg border border-blue-800 bg-blue-900/20 p-4 text-sm text-blue-400">
-          <div className="flex items-center gap-2">
-            <div className="animate-spin h-4 w-4 border-2 border-blue-400 border-t-transparent rounded-full"></div>
-            <span>Job queued (ID: {jobId}). Waiting for worker...</span>
-          </div>
-        </div>
-      )}
+      {extractJobId && extractStatus === "completed" && (
+        <div className="rounded-xl border border-gray-800 p-4 space-y-3">
+          <h2 className="font-semibold">VOZ-2 · Preview do áudio extraído</h2>
+          <p className="text-sm text-gray-400">Nome da voz: {name}</p>
+          <audio controls className="w-full" src={`/api/voice/audio/${extractJobId}`} />
 
-      {status === "processing" && (
-        <div className="rounded-lg border border-yellow-800 bg-yellow-900/20 p-4 text-sm text-yellow-400">
-          <div className="flex items-center gap-2">
-            <div className="animate-spin h-4 w-4 border-2 border-yellow-400 border-t-transparent rounded-full"></div>
-            <span>Processing voice clone... This may take a few minutes.</span>
-          </div>
-        </div>
-      )}
-
-      {status === "completed" && voiceId && (
-        <div className="rounded-lg border border-green-800 bg-green-900/20 p-4 text-sm text-green-400">
-          <p className="font-semibold">✓ Voice cloning completed!</p>
-          <p className="mt-1 text-xs text-gray-400">Voice ID: {voiceId}</p>
-        </div>
-      )}
-
-      {(status === "failed" || error) && (
-        <div className="rounded-lg border border-red-800 bg-red-900/20 p-4 text-sm text-red-400">
-          <p className="font-semibold">✗ Voice cloning failed</p>
-          <p className="mt-1 text-xs">{error || "Unknown error"}</p>
           <button
-            onClick={() => {
-              setStatus("idle");
-              setJobId(null);
-              setError(null);
-            }}
-            className="mt-2 text-xs underline"
+            onClick={handleClone}
+            disabled={cloneStatus === "loading" || cloneStatus === "queued" || cloneStatus === "processing"}
+            className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold disabled:opacity-50"
           >
-            Try again
+            {cloneStatus === "loading" ? "Iniciando clone..." : "Clonar voz"}
           </button>
+
+          {(cloneStatus === "queued" || cloneStatus === "processing") && (
+            <p className="text-sm text-yellow-400">Clonando voz... ({cloneStatus})</p>
+          )}
+          {cloneStatus === "failed" && <p className="text-sm text-red-400">{cloneError}</p>}
+          {cloneStatus === "completed" && voiceId && (
+            <p className="text-sm text-green-400">Clone pronto ✅ Voice ID: {voiceId}</p>
+          )}
+        </div>
+      )}
+
+      {voiceId && (
+        <div className="rounded-xl border border-gray-800 p-4 space-y-3">
+          <h2 className="font-semibold">VOZ-3 · Teste falando com sua voz</h2>
+          <textarea
+            value={ttsText}
+            onChange={(e) => setTtsText(e.target.value)}
+            className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-sm min-h-[100px]"
+            placeholder="Digite o texto para falar"
+          />
+          <button
+            onClick={handleSpeak}
+            disabled={!ttsText || ttsLoading}
+            className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold disabled:opacity-50"
+          >
+            {ttsLoading ? "Gerando áudio..." : "Falar com minha voz"}
+          </button>
+          {ttsAudioUrl && <audio controls className="w-full" src={ttsAudioUrl} />}
         </div>
       )}
     </div>

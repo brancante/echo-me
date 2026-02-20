@@ -9,10 +9,14 @@ export async function POST(req: NextRequest) {
   try {
     const user = await requireAuth();
     const body = await req.json();
-    const { youtube_url, persona_name } = body;
+    const { youtube_url, persona_name, extract_job_id } = body;
 
-    if (!youtube_url || !persona_name) {
-      return NextResponse.json({ error: "youtube_url and persona_name required" }, { status: 400 });
+    if (!persona_name) {
+      return NextResponse.json({ error: "persona_name required" }, { status: 400 });
+    }
+
+    if (!youtube_url && !extract_job_id) {
+      return NextResponse.json({ error: "youtube_url or extract_job_id required" }, { status: 400 });
     }
 
     // Create or get existing persona for this user (one persona per user for MVP)
@@ -44,12 +48,38 @@ export async function POST(req: NextRequest) {
     
     const finalPersonaId = personaId;
 
+    let jobType = "voice_clone";
+    let jobInput: any = { youtube_url, persona_name, persona_id: finalPersonaId };
+
+    if (extract_job_id) {
+      const extractJob = await query(
+        `SELECT output FROM jobs WHERE id = $1 AND user_id = $2 AND type = 'voice_extract' AND status = 'completed'`,
+        [extract_job_id, user.id]
+      );
+
+      if (extractJob.rows.length === 0) {
+        return NextResponse.json({ error: "Extract job not found or not completed" }, { status: 400 });
+      }
+
+      const output = typeof extractJob.rows[0].output === "string"
+        ? JSON.parse(extractJob.rows[0].output)
+        : extractJob.rows[0].output;
+
+      jobType = "voice_clone_from_extract";
+      jobInput = {
+        persona_name,
+        persona_id: finalPersonaId,
+        extract_job_id,
+        audio_path: output?.audio_path,
+      };
+    }
+
     // Create voice clone job
     const jobResult = await query(
       `INSERT INTO jobs (user_id, type, status, input)
-       VALUES ($1, 'voice_clone', 'pending', $2)
+       VALUES ($1, $2, 'pending', $3)
        RETURNING id`,
-      [user.id, JSON.stringify({ youtube_url, persona_name, persona_id: finalPersonaId })]
+      [user.id, jobType, JSON.stringify(jobInput)]
     );
     
     const jobId = jobResult.rows[0].id;
