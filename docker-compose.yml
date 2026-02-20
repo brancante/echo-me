@@ -1,0 +1,107 @@
+version: "3.9"
+
+services:
+  web:
+    build: ./web
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://echo:echo@db:5432/echome
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXTAUTH_URL=http://localhost:3000
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ./data:/data
+
+  engine-voice:
+    build: ./engine
+    command: python -m voice.worker
+    environment:
+      - DATABASE_URL=postgresql://echo:echo@db:5432/echome
+      - REDIS_URL=redis://redis:6379
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ./data:/data
+
+  engine-persona:
+    build: ./engine
+    command: python -m persona.worker
+    environment:
+      - DATABASE_URL=postgresql://echo:echo@db:5432/echome
+      - REDIS_URL=redis://redis:6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ./data:/data
+
+  engine-rag:
+    build: ./engine
+    command: python -m rag.worker
+    environment:
+      - DATABASE_URL=postgresql://echo:echo@db:5432/echome
+      - REDIS_URL=redis://redis:6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+    depends_on:
+      - db
+      - redis
+      - chroma
+    volumes:
+      - ./data:/data
+
+  engine-telegram:
+    build: ./engine
+    command: python -m channels.telegram_bot
+    environment:
+      - DATABASE_URL=postgresql://echo:echo@db:5432/echome
+      - REDIS_URL=redis://redis:6379
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+    depends_on:
+      - db
+      - redis
+      - chroma
+    volumes:
+      - ./data:/data
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=echome
+      - POSTGRES_USER=echo
+      - POSTGRES_PASSWORD=echo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  chroma:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - chromadata:/chroma/chroma
+
+volumes:
+  pgdata:
+  chromadata:
