@@ -3,12 +3,18 @@
 import os
 import subprocess
 import logging
+import json
+import time
+import redis
 from pathlib import Path
 
 from config import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [voice] %(message)s")
 logger = logging.getLogger(__name__)
+
+# Redis client
+redis_client = redis.from_url(settings.redis_url)
 
 
 def download_audio(youtube_url: str, output_dir: Path) -> Path:
@@ -102,28 +108,48 @@ def process_job(job_id: str, user_id: str, youtube_url: str, persona_name: str):
 
 
 if __name__ == "__main__":
-    logger.info("Voice worker started — polling for jobs...")
-    import time
+    logger.info("Voice worker started — listening on Redis queue 'voice_clone'...")
+    from db import get_db
 
     while True:
-        # Simple polling loop (replace with Redis queue in production)
-        from db import get_db
-
-        with get_db() as db:
-            result = db.execute(
-                "SELECT j.id, j.user_id, j.input FROM jobs j "
-                "WHERE j.type = 'voice_clone' AND j.status = 'pending' "
-                "ORDER BY j.created_at LIMIT 1"
-            ).fetchone()
-
-        if result:
-            import json
-            job_input = json.loads(result[2]) if isinstance(result[2], str) else result[2]
-            process_job(
-                job_id=str(result[0]),
-                user_id=str(result[1]),
-                youtube_url=job_input["youtube_url"],
-                persona_name=job_input.get("persona_name", "Echo Voice"),
-            )
-        else:
+        try:
+            # Block on Redis queue (BLPOP with 5 second timeout)
+            result = redis_client.blpop("voice_clone", timeout=5)
+            
+            if result:
+                _, job_id_bytes = result
+                job_id = job_id_bytes.decode("utf-8")
+                
+                logger.info(f"Processing job {job_id}")
+                
+                # Fetch job details from DB
+                with get_db() as db:
+                    job_row = db.execute(
+                        "SELECT user_id, input FROM jobs WHERE id = :id",
+                        {"id": job_id}
+                    ).fetchone()
+                
+                if not job_row:
+                    logger.error(f"Job {job_id} not found in database")
+                    continue
+                
+                user_id = str(job_row[0])
+                job_input = json.loads(job_row[1]) if isinstance(job_row[1], str) else job_row[1]
+                
+                youtube_url = job_input.get("youtube_url")
+                persona_name = job_input.get("persona_name", "Echo Voice")
+                
+                if not youtube_url:
+                    logger.error(f"Job {job_id} missing youtube_url")
+                    with get_db() as db:
+                        db.execute(
+                            "UPDATE jobs SET status = 'failed', error = 'Missing youtube_url' WHERE id = :id",
+                            {"id": job_id}
+                        )
+                    continue
+                
+                process_job(job_id, user_id, youtube_url, persona_name)
+                
+        except Exception as e:
+            logger.error(f"Worker error: {e}")
             time.sleep(5)

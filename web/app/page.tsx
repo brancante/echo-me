@@ -1,6 +1,10 @@
 import Link from "next/link";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const session = await getServerSession(authOptions);
+
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
       {/* Hero */}
@@ -11,12 +15,21 @@ export default function LandingPage() {
         <p className="text-xl text-gray-400">
           Clone your voice. Upload your knowledge. Let your digital twin answer customers 24/7 — in your voice, with your expertise.
         </p>
-        <Link
-          href="/dashboard"
-          className="inline-block rounded-lg bg-brand-600 px-8 py-3 text-lg font-semibold hover:bg-brand-700 transition"
-        >
-          Get Started
-        </Link>
+        {session ? (
+          <Link
+            href="/dashboard"
+            className="inline-block rounded-lg bg-brand-600 px-8 py-3 text-lg font-semibold hover:bg-brand-700 transition"
+          >
+            Go to Dashboard
+          </Link>
+        ) : (
+          <Link
+            href="/api/auth/signin"
+            className="inline-block rounded-lg bg-brand-600 px-8 py-3 text-lg font-semibold hover:bg-brand-700 transition"
+          >
+            Sign in with Google
+          </Link>
+        )}
       </div>
 
       {/* Features */}

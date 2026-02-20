@@ -1,6 +1,25 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/session";
+import { query } from "@/lib/db";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  // TODO: fetch clients + conversations from DB
-  return NextResponse.json({ clients: [], total: 0 });
+  try {
+    const user = await requireAuth();
+    const result = await query(
+      `SELECT id, name, telegram_id, email, notes, created_at 
+       FROM clients 
+       WHERE user_id = $1 
+       ORDER BY created_at DESC`,
+      [user.id]
+    );
+    return NextResponse.json({ clients: result.rows, total: result.rows.length });
+  } catch (error: any) {
+    if (error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    console.error("Error fetching clients:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }

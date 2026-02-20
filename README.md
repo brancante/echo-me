@@ -179,24 +179,97 @@ The persona is the soul of Echo Me. It defines HOW the clone talks, not just WHA
 
 The auto-extracted profile is a **starting point** — the user refines it in the dashboard with a rich text editor. The final persona prompt is injected into every LLM call.
 
+## Setup & Running
+
+### Prerequisites
+- Docker & Docker Compose
+- Google OAuth credentials ([Get them here](https://console.cloud.google.com/apis/credentials))
+- ElevenLabs API key ([Get it here](https://elevenlabs.io))
+- OpenAI API key (optional, for LLM features)
+
+### Environment Variables
+
+1. Copy `.env.example` to `.env`:
+```bash
+cp .env.example .env
+```
+
+2. Fill in required values:
+```bash
+# Required for authentication
+NEXTAUTH_SECRET=<generate with: openssl rand -base64 32>
+NEXTAUTH_URL=http://localhost:3000  # or your production URL
+GOOGLE_CLIENT_ID=<your-google-client-id>
+GOOGLE_CLIENT_SECRET=<your-google-client-secret>
+
+# Required for voice cloning
+ELEVENLABS_API_KEY=<your-elevenlabs-api-key>
+
+# Optional (for other features)
+OPENAI_API_KEY=<your-openai-key>
+TELEGRAM_BOT_TOKEN=<your-telegram-bot-token>
+```
+
+### Running
+
+Start all services:
+```bash
+docker-compose up -d
+```
+
+Initialize the database (first time only):
+```bash
+docker-compose exec db psql -U echo echome < scripts/init.sql
+```
+
+Access the web interface:
+```
+http://localhost:3000
+```
+
+### Development
+
+**Web (Next.js):**
+```bash
+cd web
+npm install
+npm run dev
+```
+
+**Voice Worker:**
+```bash
+cd engine
+pip install -r requirements.txt
+python -m voice.worker
+```
+
+### Services
+- **Web UI**: http://localhost:3000
+- **PostgreSQL**: localhost:5432 (user: echo, pass: echo, db: echome)
+- **Redis**: localhost:6379
+- **ChromaDB**: localhost:8000
+
 ## MVP Scope (v0.1)
 
-- [ ] Landing page with Google OAuth
-- [ ] Dashboard with YouTube URL input
-- [ ] Voice cloning from YouTube audio
-- [ ] **Persona extraction from YouTube transcripts**
-- [ ] **Persona editor page (auto + manual fields)**
-- [ ] Product CSV upload + RAG ingestion
-- [ ] Basic Telegram bot that answers product questions
-- [ ] Audio replies using cloned voice
-- [ ] API keys settings page (Telegram, 11Labs, LLM)
+- [x] Landing page with Google OAuth
+- [x] Multi-user authentication & session management
+- [x] Dashboard with YouTube URL input
+- [x] Voice cloning from YouTube audio (real Redis queue + worker)
+- [x] Job status polling & UI feedback
+- [x] User-scoped data isolation (products, personas, clients)
+- [ ] **Persona extraction from YouTube transcripts** (future)
+- [ ] **Persona editor page (auto + manual fields)** (future)
+- [ ] Product CSV upload + RAG ingestion (endpoint ready, worker TODO)
+- [ ] Basic Telegram bot that answers product questions (worker TODO)
+- [ ] Audio replies using cloned voice (worker TODO)
+- [ ] API keys settings page (Telegram, 11Labs, LLM) (future)
 
 ## Future (v0.2+)
 
 - [ ] Client-aware personalization (knows who's asking)
 - [ ] Email channel integration
 - [ ] WhatsApp integration
-- [ ] Multi-persona support (multiple clones)
+- [ ] Multi-persona support (multiple clones per user)
 - [ ] Analytics dashboard (queries, conversion, satisfaction)
 - [ ] Video response generation (HeyGen/D-ID integration)
 - [ ] Fine-tuned product knowledge (beyond RAG)
