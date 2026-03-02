@@ -155,16 +155,20 @@ docker-compose up db redis chroma
 ## 🔄 What's Still TODO (Out of Scope for This MVP)
 
 ### RAG Pipeline
-- `engine/rag/worker.py` needs implementation
-- Should pull from `rag_ingest` Redis queue
-- Process uploaded files (CSV/PDF)
-- Chunk, embed, and store in ChromaDB
+✅ **Completed!**
+- `engine/rag/worker.py` implemented with Redis queue pattern
+- Chunks text and embeds via OpenAI `text-embedding-3-small`
+- Stores in ChromaDB with user-scoped collections
+- Query Service built at `engine/rag/query_service.py` to retrieve product info
 
 ### Persona Extraction
-- `engine/persona/worker.py` needs implementation
-- Should transcribe YouTube audio with Whisper
-- Extract persona traits with LLM
-- Store in `personas.auto_profile` JSONB
+✅ **Completed!**
+- `engine/persona/worker.py` implemented with Redis queue pattern
+- Finds user's uploaded/downloaded video/audio
+- Uses `ffmpeg` to extract highly compressed mp3
+- Transcribes audio with **OpenAI Whisper**
+- Extracts rich persona traits with **GPT-4o**
+- Stores structured JSON profile in PostgreSQL `personas.auto_profile`
 
 ### Telegram Bot
 - `engine/channels/telegram_bot.py` needs integration
