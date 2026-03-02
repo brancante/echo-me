@@ -62,6 +62,20 @@ services:
     volumes:
       - ./data:/data
 
+  engine-rag-query:
+    build: ./engine
+    command: python -m rag.query_service
+    ports:
+      - "8001:8001"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+    depends_on:
+      - chroma
+    volumes:
+      - ./data:/data
+
   engine-telegram:
     build: ./engine
     command: python -m channels.telegram_bot
