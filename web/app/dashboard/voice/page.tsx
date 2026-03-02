@@ -4,197 +4,238 @@ import { useEffect, useState } from "react";
 
 type JobStatus = "idle" | "loading" | "queued" | "processing" | "completed" | "failed";
 
+type AvatarChatResult = {
+  text: string;
+  video_url?: string | null;
+  audio_url?: string | null;
+  avatar_id?: string | null;
+  voice_id?: string | null;
+  note?: string;
+};
+
+const API_PREFIX = "/echome/api";
+
 export default function VoicePage() {
-  const [url, setUrl] = useState("");
   const [name, setName] = useState("");
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [videoFile, setVideoFile] = useState<File | null>(null);
 
-  const [extractJobId, setExtractJobId] = useState<string | null>(null);
-  const [extractStatus, setExtractStatus] = useState<JobStatus>("idle");
-  const [extractError, setExtractError] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [status, setStatus] = useState<JobStatus>("idle");
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<any>(null);
 
-  const [cloneJobId, setCloneJobId] = useState<string | null>(null);
-  const [cloneStatus, setCloneStatus] = useState<JobStatus>("idle");
-  const [cloneError, setCloneError] = useState<string | null>(null);
-  const [voiceId, setVoiceId] = useState<string | null>(null);
+  const [modelReady, setModelReady] = useState(false);
+  const [modelReason, setModelReason] = useState<string | null>("Checando status...");
 
-  const [ttsText, setTtsText] = useState("Olá, eu sou sua nova voz clonada.");
-  const [ttsAudioUrl, setTtsAudioUrl] = useState<string | null>(null);
-  const [ttsLoading, setTtsLoading] = useState(false);
+  const [testInput, setTestInput] = useState("Oi, você pode se apresentar rapidinho?");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [chatResult, setChatResult] = useState<AvatarChatResult | null>(null);
 
-  useEffect(() => {
-    if (!extractJobId || extractStatus === "completed" || extractStatus === "failed") return;
-    const interval = setInterval(async () => {
-      const res = await fetch(`/api/voice/jobs/${extractJobId}`);
-      if (!res.ok) return;
+  async function refreshModelStatus() {
+    try {
+      const res = await fetch(`${API_PREFIX}/voice/model-status`);
       const data = await res.json();
-      const status = data?.job?.status as JobStatus;
-      setExtractStatus(status);
-      if (status === "failed") setExtractError(data?.job?.error || "Falha na extração");
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [extractJobId, extractStatus]);
+      if (!res.ok) return;
+      setModelReady(Boolean(data?.ready));
+      setModelReason(data?.reason || null);
+    } catch {
+      setModelReady(false);
+      setModelReason("Não foi possível verificar status do modelo.");
+    }
+  }
 
   useEffect(() => {
-    if (!cloneJobId || cloneStatus === "completed" || cloneStatus === "failed") return;
+    refreshModelStatus();
+  }, []);
+
+  useEffect(() => {
+    if (!jobId || status === "completed" || status === "failed") return;
+
     const interval = setInterval(async () => {
-      const res = await fetch(`/api/voice/jobs/${cloneJobId}`);
+      const res = await fetch(`${API_PREFIX}/voice/jobs/${jobId}`);
       if (!res.ok) return;
+
       const data = await res.json();
       const job = data?.job;
-      const status = job?.status as JobStatus;
-      setCloneStatus(status);
-      if (status === "completed") {
+      const nextStatus = job?.status as JobStatus;
+      setStatus(nextStatus);
+
+      if (nextStatus === "completed") {
         const output = typeof job.output === "string" ? JSON.parse(job.output) : job.output;
-        setVoiceId(output?.voice_id || null);
+        setResult(output || null);
+        refreshModelStatus();
       }
-      if (status === "failed") setCloneError(job?.error || "Falha no clone");
+
+      if (nextStatus === "failed") {
+        setError(job?.error || "Falha no treinamento HeyGen");
+      }
     }, 3000);
+
     return () => clearInterval(interval);
-  }, [cloneJobId, cloneStatus]);
+  }, [jobId, status]);
 
-  async function handleExtract() {
-    setExtractStatus("loading");
-    setExtractError(null);
-    setExtractJobId(null);
-    setCloneJobId(null);
-    setCloneStatus("idle");
-    setVoiceId(null);
-    setTtsAudioUrl(null);
+  async function handleTrain() {
+    setStatus("loading");
+    setError(null);
+    setResult(null);
+    setJobId(null);
 
-    const res = await fetch("/api/voice/extract", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ youtube_url: url, persona_name: name }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setExtractStatus("failed");
-      setExtractError(data.error || "Falha ao iniciar extração");
-      return;
-    }
-
-    setExtractJobId(data.job_id);
-    setExtractStatus("queued");
-  }
-
-  async function handleClone() {
-    if (!extractJobId) return;
-    setCloneStatus("loading");
-    setCloneError(null);
-
-    const res = await fetch("/api/voice/clone", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ extract_job_id: extractJobId, persona_name: name }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setCloneStatus("failed");
-      setCloneError(data.error || "Falha ao iniciar clone");
-      return;
-    }
-
-    setCloneJobId(data.job_id);
-    setCloneStatus("queued");
-  }
-
-  async function handleSpeak() {
-    setTtsLoading(true);
-    setTtsAudioUrl(null);
     try {
-      const res = await fetch("/api/voice/speak", {
+      const formData = new FormData();
+      formData.append("persona_name", name);
+      if (youtubeUrl) formData.append("youtube_url", youtubeUrl);
+      if (videoFile) formData.append("video_file", videoFile);
+
+      const res = await fetch(`${API_PREFIX}/voice/clone`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setStatus("failed");
+        setError(data?.error || "Falha ao iniciar treinamento");
+        return;
+      }
+
+      setJobId(data.job_id);
+      setStatus("queued");
+      setModelReady(false);
+    } catch (e: any) {
+      setStatus("failed");
+      setError(e?.message || "Erro inesperado");
+    }
+  }
+
+  async function handleAvatarTest() {
+    setChatLoading(true);
+    setChatError(null);
+
+    try {
+      const res = await fetch(`${API_PREFIX}/voice/avatar-chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: ttsText, voice_id: voiceId }),
+        body: JSON.stringify({ text: testInput }),
       });
+
+      const data = await res.json();
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Falha no TTS");
+        setChatError(data?.error || "Falha no teste do avatar");
+        setChatLoading(false);
+        return;
       }
-      const blob = await res.blob();
-      setTtsAudioUrl(URL.createObjectURL(blob));
+
+      setChatResult(data);
     } catch (e: any) {
-      alert(e.message || "Erro ao falar");
+      setChatError(e?.message || "Erro inesperado no teste");
     } finally {
-      setTtsLoading(false);
+      setChatLoading(false);
     }
   }
 
+  const hasSource = Boolean(youtubeUrl.trim() || videoFile);
+
   return (
-    <div className="max-w-2xl space-y-6">
-      <h1 className="text-2xl font-bold">🎙️ VOZ</h1>
+    <div className="max-w-3xl space-y-6">
+      <h1 className="text-2xl font-bold">🎭 Avatar + Voz (HeyGen)</h1>
 
       <div className="rounded-xl border border-gray-800 p-4 space-y-3">
-        <h2 className="font-semibold">VOZ-1 · Dados da voz</h2>
+        <h2 className="font-semibold">1) Treinamento</h2>
+
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Nome da voz"
+          placeholder="Nome da persona"
           className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-sm"
         />
+
         <input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="URL do YouTube"
+          value={youtubeUrl}
+          onChange={(e) => setYoutubeUrl(e.target.value)}
+          placeholder="URL do YouTube (opcional se enviar vídeo)"
           className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-sm"
         />
+
+        <div className="space-y-1">
+          <label className="text-sm text-gray-300">Upload de vídeo local (opcional se usar YouTube)</label>
+          <input
+            type="file"
+            accept="video/*"
+            onChange={(e) => setVideoFile(e.target.files?.[0] || null)}
+            className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm"
+          />
+          {videoFile && <p className="text-xs text-gray-400">Arquivo: {videoFile.name}</p>}
+        </div>
+
         <button
-          onClick={handleExtract}
-          disabled={!name || !url || extractStatus === "loading" || extractStatus === "queued" || extractStatus === "processing"}
+          onClick={handleTrain}
+          disabled={!name || !hasSource || status === "loading" || status === "queued" || status === "processing"}
           className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold disabled:opacity-50"
         >
-          {extractStatus === "loading" ? "Iniciando..." : "Extrair MP3"}
+          {status === "loading" ? "Iniciando..." : "Treinar no HeyGen"}
         </button>
 
-        {(extractStatus === "queued" || extractStatus === "processing") && (
-          <p className="text-sm text-blue-400">Extraindo áudio... ({extractStatus})</p>
+        {(status === "queued" || status === "processing") && (
+          <p className="text-sm text-blue-400">Treinamento em andamento... ({status})</p>
         )}
-        {extractStatus === "failed" && <p className="text-sm text-red-400">{extractError}</p>}
+
+        {status === "failed" && <p className="text-sm text-red-400">{error}</p>}
       </div>
 
-      {extractJobId && extractStatus === "completed" && (
-        <div className="rounded-xl border border-gray-800 p-4 space-y-3">
-          <h2 className="font-semibold">VOZ-2 · Preview do áudio extraído</h2>
-          <p className="text-sm text-gray-400">Nome da voz: {name}</p>
-          <audio controls className="w-full" src={`/api/voice/audio/${extractJobId}`} />
-
-          <button
-            onClick={handleClone}
-            disabled={cloneStatus === "loading" || cloneStatus === "queued" || cloneStatus === "processing"}
-            className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold disabled:opacity-50"
-          >
-            {cloneStatus === "loading" ? "Iniciando clone..." : "Clonar voz"}
-          </button>
-
-          {(cloneStatus === "queued" || cloneStatus === "processing") && (
-            <p className="text-sm text-yellow-400">Clonando voz... ({cloneStatus})</p>
-          )}
-          {cloneStatus === "failed" && <p className="text-sm text-red-400">{cloneError}</p>}
-          {cloneStatus === "completed" && voiceId && (
-            <p className="text-sm text-green-400">Clone pronto ✅ Voice ID: {voiceId}</p>
-          )}
+      {status === "completed" && (
+        <div className="rounded-xl border border-gray-800 p-4 space-y-2">
+          <h2 className="font-semibold">Concluído ✅</h2>
+          <p className="text-sm text-gray-300">Job ID: {jobId}</p>
+          {result?.training_id && <p className="text-sm text-green-400">Training ID: {result.training_id}</p>}
+          {result?.avatar_id && <p className="text-sm text-green-400">Avatar ID: {result.avatar_id}</p>}
+          {result?.voice_id && <p className="text-sm text-green-400">Voice ID: {result.voice_id}</p>}
         </div>
       )}
 
-      {voiceId && (
-        <div className="rounded-xl border border-gray-800 p-4 space-y-3">
-          <h2 className="font-semibold">VOZ-3 · Teste falando com sua voz</h2>
-          <textarea
-            value={ttsText}
-            onChange={(e) => setTtsText(e.target.value)}
-            className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-sm min-h-[100px]"
-            placeholder="Digite o texto para falar"
+      <div className="rounded-xl border border-gray-800 p-4 space-y-3">
+        <h2 className="font-semibold">2) Teste</h2>
+
+        <div className="flex gap-2">
+          <input
+            value={testInput}
+            onChange={(e) => setTestInput(e.target.value)}
+            placeholder="Digite um texto para testar"
+            className="flex-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm"
           />
           <button
-            onClick={handleSpeak}
-            disabled={!ttsText || ttsLoading}
-            className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold disabled:opacity-50"
+            onClick={handleAvatarTest}
+            disabled={!modelReady || !testInput.trim() || chatLoading}
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold disabled:opacity-50"
           >
-            {ttsLoading ? "Gerando áudio..." : "Falar com minha voz"}
+            {chatLoading ? "Testando..." : "Teste"}
           </button>
-          {ttsAudioUrl && <audio controls className="w-full" src={ttsAudioUrl} />}
         </div>
-      )}
+
+        {!modelReady && <p className="text-xs text-amber-400">{modelReason || "Modelo ainda não pronto."}</p>}
+        {chatError && <p className="text-xs text-red-400">{chatError}</p>}
+
+        {chatResult && (
+          <div className="space-y-2 rounded-lg border border-gray-700 bg-gray-900/50 p-3">
+            <p className="text-sm text-gray-100 whitespace-pre-wrap">{chatResult.text}</p>
+
+            {chatResult.video_url && (
+              <iframe
+                src={chatResult.video_url}
+                className="h-72 w-full rounded-lg border border-gray-700"
+                allow="autoplay; fullscreen"
+              />
+            )}
+
+            {!chatResult.video_url && chatResult.audio_url && (
+              <audio controls src={chatResult.audio_url} className="w-full" />
+            )}
+
+            {chatResult.note && <p className="text-xs text-amber-400">{chatResult.note}</p>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

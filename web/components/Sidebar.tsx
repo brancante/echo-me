@@ -5,12 +5,12 @@ import { usePathname } from "next/navigation";
 import clsx from "clsx";
 
 const nav = [
-  { href: "/dashboard", label: "Overview", icon: "📊" },
-  { href: "/dashboard/voice", label: "Voice", icon: "🎙️" },
+  { href: "/dashboard", label: "Visão geral", icon: "📊" },
+  { href: "/dashboard/voice", label: "Voz", icon: "🎙️" },
   { href: "/dashboard/persona", label: "Persona", icon: "🧠" },
-  { href: "/dashboard/products", label: "Products", icon: "📦" },
-  { href: "/dashboard/clients", label: "Clients", icon: "👥" },
-  { href: "/dashboard/settings", label: "Settings", icon: "⚙️" },
+  { href: "/dashboard/products", label: "Produtos", icon: "📦" },
+  { href: "/dashboard/clients", label: "Clientes", icon: "👥" },
+  { href: "/dashboard/settings", label: "Configurações", icon: "⚙️" },
 ];
 
 export default function Sidebar() {

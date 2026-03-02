@@ -20,7 +20,7 @@ CREATE TABLE personas (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     role VARCHAR(255),
-    voice_id VARCHAR(255),              -- ElevenLabs voice ID
+    voice_id VARCHAR(255),              -- Provider voice ID (HeyGen)
     voice_status VARCHAR(50) DEFAULT 'pending',  -- pending | processing | ready | failed
     youtube_url TEXT,
     transcript TEXT,
@@ -112,7 +112,7 @@ CREATE INDEX idx_api_keys_user ON api_keys(user_id);
 CREATE TABLE jobs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    type VARCHAR(100) NOT NULL,         -- voice_clone | persona_extract | rag_ingest
+    type VARCHAR(100) NOT NULL,         -- heygen_train | persona_extract | rag_ingest
     status VARCHAR(50) DEFAULT 'pending', -- pending | processing | completed | failed
     input JSONB DEFAULT '{}',
     output JSONB DEFAULT '{}',

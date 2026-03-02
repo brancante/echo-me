@@ -24,7 +24,9 @@ services:
     environment:
       - DATABASE_URL=postgresql://echo:echo@db:5432/echome
       - REDIS_URL=redis://redis:6379
-      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - HEYGEN_API_KEY=${HEYGEN_API_KEY}
+      - HEYGEN_BASE_URL=${HEYGEN_BASE_URL:-https://api.heygen.com}
+      - HEYGEN_TRAIN_ENDPOINT=${HEYGEN_TRAIN_ENDPOINT}
     depends_on:
       - db
       - redis
