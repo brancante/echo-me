@@ -148,13 +148,14 @@ All core backend services are implemented, tested, and operational.
    - Extract tone, vocabulary, speech patterns, selling style
    - Store structured profile
 
-4. **Have Conversations**
+4. **Have Conversations (via Telegram or Web)**
    - Receive customer question
    - Query RAG for relevant product info
    - Load your persona profile
    - Generate response in YOUR voice/style
    - Optionally convert to audio with cloned voice
    - Return personalized answer
+   - Save full conversation history to PostgreSQL
 
 ---
 
@@ -250,9 +251,9 @@ curl http://localhost:3000/api/chat/123
 ## 🚀 Next Steps (Frontend + Integration)
 
 ### High Priority
+- [x] Telegram bot integration with chat engine
+- [x] Conversation history tracking (database)
 - [ ] Frontend chat UI component (React)
-- [ ] Telegram bot integration with chat engine
-- [ ] Conversation history tracking (database)
 - [ ] Analytics dashboard (usage, performance)
 
 ### Medium Priority

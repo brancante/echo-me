@@ -44,7 +44,7 @@ class ChatWorker:
         
     def update_job_status(
         self,
-        job_id: int,
+        job_id: str,
         status: str,
         result_data: dict = None,
         error_message: str = None
@@ -53,11 +53,18 @@ class ChatWorker:
         try:
             cursor = self.db_conn.cursor()
             
-            if status == "completed":
+            if status == "processing":
                 cursor.execute("""
                     UPDATE jobs
                     SET status = %s,
-                        result_data = %s,
+                        started_at = NOW()
+                    WHERE id = %s
+                """, (status, job_id))
+            elif status == "completed":
+                cursor.execute("""
+                    UPDATE jobs
+                    SET status = %s,
+                        output = %s,
                         completed_at = NOW()
                     WHERE id = %s
                 """, (status, json.dumps(result_data), job_id))
@@ -65,7 +72,7 @@ class ChatWorker:
                 cursor.execute("""
                     UPDATE jobs
                     SET status = %s,
-                        error_message = %s,
+                        error = %s,
                         completed_at = NOW()
                     WHERE id = %s
                 """, (status, error_message, job_id))

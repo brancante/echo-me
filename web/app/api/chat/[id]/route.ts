@@ -32,8 +32,8 @@ export async function GET(
   }
 
   try {
-    const jobId = parseInt(params.id)
-    if (isNaN(jobId)) {
+    const jobId = params.id
+    if (!jobId || typeof jobId !== 'string') {
       return NextResponse.json({ error: 'Invalid job ID' }, { status: 400 })
     }
 
@@ -41,7 +41,7 @@ export async function GET(
 
     // Fetch job (scoped to user)
     const result = await db.query(
-      `SELECT id, status, result_data, error_message, created_at, completed_at
+      `SELECT id, status, output as result_data, error as error_message, created_at, completed_at
        FROM jobs
        WHERE id = $1 AND user_id = $2`,
       [jobId, session.user.id]

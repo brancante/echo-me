@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
 
     // Create job in database
     const result = await db.query(
-      `INSERT INTO jobs (user_id, type, status, parameters)
+      `INSERT INTO jobs (user_id, type, status, input)
        VALUES ($1, 'chat', 'pending', $2)
        RETURNING id`,
       [
