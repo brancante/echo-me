@@ -76,6 +76,22 @@ services:
     volumes:
       - ./data:/data
 
+  engine-chat:
+    build: ./engine
+    command: python -m chat.worker
+    environment:
+      - DATABASE_URL=postgresql://echo:echo@db:5432/echome
+      - REDIS_URL=redis://redis:6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - RAG_SERVICE_URL=http://engine-rag-query:8001
+    depends_on:
+      - db
+      - redis
+      - engine-rag-query
+    volumes:
+      - ./data:/data
+
   engine-telegram:
     build: ./engine
     command: python -m channels.telegram_bot
