@@ -24,7 +24,9 @@ services:
     environment:
       - DATABASE_URL=postgresql://echo:echo@db:5432/echome
       - REDIS_URL=redis://redis:6379
-      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - HEYGEN_API_KEY=${HEYGEN_API_KEY}
+      - HEYGEN_BASE_URL=${HEYGEN_BASE_URL:-https://api.heygen.com}
+      - HEYGEN_TRAIN_ENDPOINT=${HEYGEN_TRAIN_ENDPOINT}
     depends_on:
       - db
       - redis
@@ -57,6 +59,36 @@ services:
       - db
       - redis
       - chroma
+    volumes:
+      - ./data:/data
+
+  engine-rag-query:
+    build: ./engine
+    command: python -m rag.query_service
+    ports:
+      - "8001:8001"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+    depends_on:
+      - chroma
+    volumes:
+      - ./data:/data
+
+  engine-chat:
+    build: ./engine
+    command: python -m chat.worker
+    environment:
+      - DATABASE_URL=postgresql://echo:echo@db:5432/echome
+      - REDIS_URL=redis://redis:6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - RAG_SERVICE_URL=http://engine-rag-query:8001
+    depends_on:
+      - db
+      - redis
+      - engine-rag-query
     volumes:
       - ./data:/data
 
