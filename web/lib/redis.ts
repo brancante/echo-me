@@ -14,6 +14,11 @@ export async function pushJob(queue: string, jobId: string) {
   await client.rpush(queue, jobId);
 }
 
+export async function pushToQueue(queue: string, payload: unknown) {
+  const client = getRedis();
+  await client.rpush(queue, JSON.stringify(payload));
+}
+
 export async function popJob(queue: string): Promise<string | null> {
   const client = getRedis();
   return await client.lpop(queue);
